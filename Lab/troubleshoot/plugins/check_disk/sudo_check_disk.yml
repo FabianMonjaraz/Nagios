@@ -1,0 +1,43 @@
+---
+- hosts: all
+  #gather_facts: no
+  tasks:
+  - name: Adding the sudo option in check_disk
+    lineinfile:
+      path: /etc/nrpe.d/common.cfg
+      regexp: "^command[[]check_disk[]]="
+      line: "command[check_disk]=sudo /usr/lib64/nagios/plugins/check_disk $ARG1$"
+      state: present
+    register: sudo_check_disk
+
+  - name: "Restarting nrpe service"
+    service:
+      name: nrpe
+      state: restarted
+    when: sudo_check_disk.changed
+
+  - name: Adding the rules in /etc/sudoers
+    blockinfile:
+      path: /etc/sudoers
+      block: |
+        Defaults:nrpe !requiretty
+        nrpe ALL=NOPASSWD: /usr/lib64/nagios/plugins/
+ 
+  - name: Enabling sudo commands from nagios in selinux
+    seboolean:
+      name: nagios_run_sudo
+      state: yes
+      persistent: yes 
+    tags: 
+      - context
+      - boolean_sudo
+
+  - name: Changing plugin context to nagios_unconfined_plugin_exec_t
+    sefcontext:
+      # Se dirge el contexto a /usr/lib en lugar de a /usr/lib64 debido a un contexto que selinux tiene por default.
+      target: /usr/lib/nagios/plugins/check_disk
+      setype: nagios_unconfined_plugin_exec_t
+      state: present
+    tags: 
+      - context
+      - type_context

@@ -1,0 +1,30 @@
+---
+- name: Borrado de los datos anteriores (Si existen)
+  file:
+    path: /root/nagios
+    state: absent
+  
+- name: Creacion del directorio temporal de Nagios
+  file:
+    path: /root/nagios
+    state: directory
+
+- name: Enviando rpms
+  copy: 
+    src: RHEL{{ ansible_distribution_major_version }}/
+    dest: /root/nagios/
+
+- name: Verificando paquetes enviados
+  find: 
+    paths: /root/nagios
+    patterns: '*.rpm'
+  register: path_rpms
+
+- name: Preparando paquetes para instalacion
+  set_fact:
+    rpm_list: "{{ path_rpms.files | map(attribute='path') | list }}"
+
+- name: Instalando rpms 
+  yum: 
+    name: "{{ rpm_list }}"
+    state: present

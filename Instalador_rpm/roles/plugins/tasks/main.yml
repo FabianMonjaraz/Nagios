@@ -1,0 +1,29 @@
+---
+- name: Creando (si no existe) /usr/lib64/nagios/plugins
+  file:
+    path: /usr/lib64/nagios/plugins
+    state: directory
+    owner: nagios
+    group: nagios
+
+- name: Enviando plugins comunes
+  copy:
+    src: common/
+    dest: /usr/lib64/nagios/plugins
+    mode: 0755
+    group: nagios
+    owner: nagios
+
+- name: Enviando plugins basados en version de RHEL
+  copy:
+    src: RHEL{{ ansible_distribution_major_version }}/
+    dest: /usr/lib64/nagios/plugins
+    mode: 0755
+    group: nagios
+    owner: nagios
+
+- name: Instalando dependencias de plugins
+  yum:
+    name: "{{ dependencias }}"
+    state: present
+  ignore_errors: true

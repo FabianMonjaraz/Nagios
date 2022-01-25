@@ -1,0 +1,62 @@
+---
+- hosts: all
+  tasks:
+
+  - name: "Creating (if it doesn't exists) /usr/lib64/nagios/plugins"
+    file:
+      path: /usr/lib64/nagios/plugins
+      state: directory
+
+  - name: Listing common plugins
+    shell: ls /SVN/Fabian/Utilities/Nagios/lab/plugins/common
+    register: list_plugs_common
+    delegate_to: ansible_master
+
+  - name: "Sending common plugins"
+    copy:
+      src: plugins/common/{{ item }}
+      dest: /usr/lib64/nagios/plugins
+      mode: 0755
+      group: nagios
+      owner: nagios
+    with_items:
+      - "{{ list_plugs_common.stdout_lines }}"
+ 
+  - name: Listing plugins based on SO version
+    shell: ls /SVN/Fabian/Utilities/Nagios/lab/plugins/RHEL{{ ansible_distribution_major_version }}
+    register: list_plugs_version
+    delegate_to: ansible_master
+
+  - name: "Sending missing plugins based on SO version"
+    copy:
+      src: plugins/RHEL{{ ansible_distribution_major_version }}/{{ item }}
+      dest: /usr/lib64/nagios/plugins
+      mode: 0755
+      group: nagios
+      owner: nagios
+    with_items:
+      - "{{ list_plugs_version.stdout_lines }}"
+ 
+  - name: "Sending common.cfg"
+    copy:
+      src: files/common.cfg
+      dest: /etc/nrpe.d/
+      mode: 0644
+
+  - name: "Sending nrpe.cfg"
+    copy:
+      src: files/nrpe.cfg
+      dest: /etc/nagios/
+      mode: 0644
+
+  - name: Adding the rules in /etc/sudoers
+    blockinfile:
+      path: /etc/sudoers
+      block: |
+        Defaults:nrpe !requiretty
+        nrpe ALL=NOPASSWD: /usr/lib64/nagios/plugins/
+
+  - name: "Restarting nrpe service"
+    service: 
+      name: nrpe
+      state: restarted

@@ -1,0 +1,3 @@
+#!/bin/bash
+SUSCRITO=$(subscription-manager list | egrep -i 'status:[[:space:]]*subscribed')
+[[ -n $SUSCRITO ]] && echo 'Suscripcion: OK' || echo 'Suscripcion: ERROR'

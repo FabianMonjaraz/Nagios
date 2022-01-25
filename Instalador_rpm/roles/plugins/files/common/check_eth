@@ -1,0 +1,56 @@
+#!/bin/bash
+function usage 
+ {
+   echo "$(basename $0) usage: "
+   echo "    -w warning_level  Example: 80"
+   echo "    -c critical_level Example: 90"
+   echo "    -t tim_sleepe > 0 Example:  5"
+   echo ""
+   exit 3
+ }
+
+tsleep=5
+inter="A"
+
+function get_en_data {
+  en=$1
+  if [[ ! $en =~ ^lo ]]
+    then
+      #read rx1 <<< $(ip -s link show $en | grep -Ei 'rx' -A1 | awk '{print $1}' | sed -n '/^[0-9]/p')
+      #read tx1 <<< $(ip -s link show $en | grep -Ei 'tx' -A1 | awk '{print $1}' | sed -n '/^[0-9]/p')
+      read rx1 tx1 <<< $(ip -s link show $en | grep -Ei 'rx|tx' -A1 | awk '{print $1}' | sed -n '/^[0-9]/p' | tr '\n' ' ')
+      sleep ${tsleep};
+      #read rx2 <<< $(ip -s link show $en | grep -Ei 'rx' -A1 | awk '{print $1}' | sed -n '/^[0-9]/p')
+      #read tx2 <<< $(ip -s link show $en | grep -Ei 'tx' -A1 | awk '{print $1}' | sed -n '/^[0-9]/p')
+      read rx2 tx2 <<< $(ip -s link show $en | grep -Ei 'rx|tx' -A1 | awk '{print $1}' | sed -n '/^[0-9]/p' | tr '\n' ' ')
+      tx=$(echo $tx2 $tx1 | awk -v seconds=${tsleep} '{print "scale=2;(" $1 "-" $2 ")/" seconds "/1024"}' | bc -l)
+      rx=$(echo $rx2 $rx1 | awk -v seconds=${tsleep} '{print "scale=2;(" $1 "-" $2 ")/" seconds "/1024"}' | bc -l)
+      echo "Bandwith: OK - ${en}_tx=${tx}KiBps ${en}_rx=${rx}KiBps | ${en}_tx=${tx}KiBps;;;; ${en}_rx=${rx}KiBps;;;; "
+  fi
+
+}
+
+while [[ $# -gt 1 ]]
+do
+    key=${1}
+    case ${key} in
+      '-w' ) shift
+             WARN="${1}"
+             ;;
+      '-c' ) shift
+             CRIT="${1}"
+      	     ;;
+      '-t' ) shift
+             tsleep="$1"
+             ;;
+         * ) usage
+             ;;
+  esac
+  shift
+done
+
+for interface in $(ip link | grep -E '^[0-9]+:' | cut -d: -f2 | tr -d " ")
+do
+  get_en_data $interface 
+done
+exit 0

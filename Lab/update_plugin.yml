@@ -1,0 +1,38 @@
+---
+- hosts: all
+  #gather_facts: no
+  tasks:
+  - name: Enviando plugin
+    copy:
+      src: plugins/{{ item }}
+      dest: /usr/lib64/nagios/plugins/
+      mode: 0755
+      group: nagios
+      owner: nagios
+    register: send
+    with_items:
+      - common/check_services_custom
+    tags:
+      - send_plugin
+
+  #- name: Agregando entrada del plugin a common.cfg
+  #  lineinfile:
+  #    path: /etc/nrpe.d/common.cfg
+  #    regexp: '^command\[{{ item }}\]='
+  #    line: 'command[{{ item }}]=/usr/lib64/nagios/plugins/{{ item }} $ARG1$'
+  #  register: config
+  #  with_items:
+  #    - check_service_custom
+
+  #- name: Recargando Servicio nrpe
+  #  service:
+  #    name: nrpe
+  #    state: reloaded
+  #  when: config.changed
+  
+  - name: Verificando servicio nrpe
+    shell: ps -fe | grep nrpe | grep -v grep
+    register: proceso
+    ignore_errors: true
+
+  - debug: msg="---> {{ ansible_default_ipv4.address }}, {{ proceso.stdout }}" 

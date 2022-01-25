@@ -1,0 +1,23 @@
+---
+- name: Recoleccion de facts necesarios
+  setup:
+    gather_subset:
+      - '!all'
+      - 'network'
+- name: Obtener Sitio del equipo
+  shell: |
+    SEGMENTO=$(echo {{ ansible_default_ipv4.address }} | cut -d. -f1-3)
+    MTY=(segmento1 segmento2 segmento3)
+    STF=(segmento4 segmento5 segmento6)
+    QRO=(segmento7 segmento8 segmento9)
+    if [[ -n $SEGMENTO ]]; then
+      [[ ${QRO[*]} =~ $SEGMENTO ]] && SITE=QRO
+      [[ ${STF[*]} =~ $SEGMENTO ]] && SITE=STF
+      [[ ${MTY[*]} =~ $SEGMENTO ]] && SITE=MTY
+    fi
+    echo $SITE
+  register: r_SITE
+
+- name: Definir monitor basado en el sitio
+  set_fact:
+    monitor: "{% if r_SITE.stdout == 'MTY' %}monitor_nagios1{% else %}monitor_nagios2{% endif %}"

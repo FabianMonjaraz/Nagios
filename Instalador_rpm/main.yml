@@ -1,0 +1,23 @@
+---
+- hosts: all
+  gather_facts: no
+  roles:
+    - role: init 
+      tags: 
+        - instalador_rpms
+        - config_plugins
+        - config_servicio
+        - troubleshooting
+        - init
+
+    - role: instalador_rhel
+      tags: instalador_rpms
+      
+    - role: plugins
+      tags: config_plugins
+      
+    - role: configuracion
+      tags: config_servicio
+      
+    - role: troubleshooting
+      tags: troubleshooting

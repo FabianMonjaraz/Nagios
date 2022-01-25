@@ -1,0 +1,3 @@
+Troubleshooting:
+- En los equipos RHEL8 a veces no pueden instalarse los rpms via ansible. Es necesario instalarlos manualmente entrando al servidor (A veces tampoco se envian los RPMS via ansible, asi que es necesario enviarlos y luego instalarlos manualmente)
+- Algunos servidores con el agente instalado no logran iniciar el servicio nrpe. A veces esto es ocasionado por el owner de la carpeta /var/run/nrpe. Esta debe ser del usuario y grupo nrpe:nrpe

@@ -1,0 +1,74 @@
+#!/bin/bash
+# 
+# Plugin to check free swap
+# using check_by_ssh
+# by Markus Walther (voltshock@gmx.de)
+# The script needs a working check_by_ssh connection and needs to run on the client to check it
+# 
+# Command-Line for check_by_ssh
+# command_line    $USER1$/check_by_ssh -H $HOSTNAME$ -p $ARG1$ -C "$ARG2$ $ARG3$ $ARG4$ $ARG5$ $ARG6$"
+# 
+# Command-Line for service (example)
+# check_by_ssh!82!/nagios/check_swap.sh!50!20
+#
+##########################################################
+
+
+# Test of the command lines arguments
+
+#if [ ! "$1" -o ! "$2" ]
+#  then
+#    echo "Usage: check_swap [warn] [crit]"
+#    echo " [warn] and [crit] as int"
+#    echo " Example: check_swap 20 10"
+#    echo "Unknown: Options missing: using default (warn=20, crit=10)"
+#        warn=`echo $((20))`
+#        crit=`echo $((10))`
+#    exit 3
+#fi
+
+while test $# -gt 0
+do
+
+  case $1 in
+    --help | -h )
+          echo "Usage: check_swap [warn] [crit]"
+          echo " [warn] and [crit] as int"
+          echo " Example: check_swap 20 10"
+          exit 3
+          ;;
+    --warn | -w ) warn=${2}
+         shift
+          ;;
+    --crit | -c ) crit=${2}
+         shift
+          ;;
+        * )  echo "unknown parameters"
+          echo "Usage: check_swap [warn] [crit]"
+          echo " [warn] and [crit] as int"
+          echo " Example: check_swap 20 10"
+          exit 3
+          ;;
+  esac
+  shift
+done
+
+read sw_total sw_used sw_free <<< $(free | grep -i swap | awk '{print $2 " " $3 " " $2-$3}')
+pctg_used=$(printf "%.0f\n" $(echo "scale=2;(${sw_used}/${sw_total}*100)/1" | bc -l))
+
+
+#if [ "$warn" -lt "$crit" -o "$warn" -eq "$crit" ]; then
+
+if [ ${pctg_used} -ge ${crit} ];
+  then
+    status="Critical"
+    exitstatus=2
+  elif [ ${pctg_used} -ge ${warn} ]; then
+    status="Warning"
+    exitstatus=1
+  else
+    status="OK"
+    exitstatus=0
+fi
+echo "${status}: $((${sw_used}/1024)) MB / $((${sw_total}/1024)) MB (${pctg_used}% used swap) |swap=${pctg_used};${warn};${crit};0;100"
+exit ${exitstatus}

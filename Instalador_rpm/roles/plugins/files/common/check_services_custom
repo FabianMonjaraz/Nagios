@@ -1,0 +1,154 @@
+#!/bin/bash
+#-------------------------------------------------------------------------------------------------------
+#	check_services
+#					version:	0.01.1
+#					modified: 	-
+#					created: 	06/08/09
+#					creator:	lucol@gronck.net
+#-------------------------------------------------------------------------------------------------------
+#	Needs
+#					. 
+#
+#-------------------------------------------------------------------------------------------------------
+#	History
+#					0.01 - 06/08/09
+#						. add semaphore control
+#-------------------------------------------------------------------------------------------------------
+
+
+## init
+#
+PROGNAME=$(basename $0)
+PROGPATH=$(echo $0 | sed -e 's,[\\/][^\\/][^\\/]*$,,')
+if [ "$0" == "./$PROGNAME" ]; then
+  PROGPATH="$(pwd)/${PROGPATH//./}"
+fi
+  . $PROGPATH/utils.sh
+exitstatus=$STATE_UNKNOWN
+
+
+## check update sem
+#
+if [ -f "$PROGPATH/check_plugins_update.sem" ]; then
+  echo "$PROGNAME: update running exit!"
+  exit $STATE_UNKNOWN
+fi
+
+## subs
+#
+vers () {
+  insvers=$(cat ${PROGPATH}$PROGNAME 	| grep '^#' | grep version: 	| tr -d '\t' | sed 's|.*version:||')
+  echo "$PROGNAME - $insvers"
+}
+
+usage() {
+  echo ""
+  vers
+  echo ""
+  echo "Usage: $PROGNAME -p grep_pattern_to_find_in_procs"
+  echo "Usage: $PROGNAME -p grep_pattern_to_find_in_procs [OPTIONS]"
+  echo "Usage: $PROGNAME -h (help)"
+  echo "Usage: $PROGNAME -V (version)"
+  echo "Parameters:" 
+  echo "-p STR"
+  echo "      pattern for searched process"
+  echo "-w INT"
+  echo "      Warning threshold for minimum expected processes"
+  echo "-c INT"
+  echo "      Critical threshold for minimum expected processes"
+  echo "-W INT"
+  echo "      Warning threshold for maximum expected processes"
+  echo "-C INT"
+  echo "      Critical threshold for maximum expected processes"
+  echo "-n STR"
+  echo "      Name of the process (if the searched process is not wanted to be shown in the result)"
+  echo ""
+}
+
+
+## args check
+#
+if [ $# -lt 1 ]; then
+  usage
+  exit $STATE_UNKNOWN
+fi
+
+while getopts 'n:w:W:c:C:p:hV' PARAM
+do
+  case $PARAM in
+  h)
+    usage
+    exit $STATE_OK
+    ;;
+  V)
+    vers
+    exit $STATE_OK
+    ;;
+  w)
+    WARN_FLOOR_TH=$OPTARG
+    [[ $WARN_FLOOR_TH -lt 1 ]] && echo "Error: El valor inferior de warning debe ser un entero positivo" && exit 1
+    ;;
+  c)
+    CRIT_FLOOR_TH=$OPTARG
+    [[ $CRIT_FLOOR_TH -lt 1 ]] && echo "Error: El valor inferior critical debe ser un entero positivo" && exit 1
+    ;;
+  W)
+    WARN_ROOF_TH=$OPTARG
+    [[ $WARN_ROOF_TH -lt 1 ]] && echo "Error: El valor superior de warning debe ser un entero positivo" && exit 1
+    ;;
+  C)
+    CRIT_ROOF_TH=$OPTARG
+    [[ $CRIT_ROOF_TH -lt 1 ]] && echo "Error: El valor superior de critical debe ser un entero positivo" && exit 1
+    ;;
+  p)
+    pattern=$OPTARG
+    ;;
+  n)
+    name=$OPTARG
+    ;;
+  *)
+    echo "Error: Parametro desconocido" && exit 1
+    ;;
+  esac
+done
+
+[[ -z $WARN_FLOOR_TH ]] && WARN_FLOOR_TH=1
+[[ -z $CRIT_FLOOR_TH ]] && CRIT_FLOOR_TH=1
+[[ -z $WARN_ROOF_TH ]] && WARN_ROOF_TH=1000
+[[ -z $CRIT_ROOF_TH ]] && CRIT_ROOF_TH=1000
+
+exitstatus=$STATE_OK
+status=$STATE_OK
+
+output=/tmp/tmp_nagios_$(date +%s%N)
+ps -eo %cpu,%mem,args | grep "$pattern" | grep -v grep | grep -v "$PROGNAME" | tr -s " " | sed 's/^ //' > $output
+amt=$(wc -l $output | cut -d' ' -f1)
+avrg_cpu=$(awk '{sum += $1} END {if (NR > 0) printf("%3.3f\n", sum )}' $output)
+avrg_mem=$(awk '{sum += $2} END {if (NR > 0) printf("%3.3f\n", sum )}' $output)
+
+[[ -z $avrg_cpu ]] && avrg_cpu=0.0
+[[ -z $avrg_mem ]] && avrg_mem=0.0
+[[ -z $name ]] && name=$pattern
+
+state="OK:"
+description="(NUM_PROCS=$amt ;; CPU_USAGE=${avrg_cpu} ;; MEM_USAGE=${avrg_mem}) ${name}"
+status=$STATE_OK
+if [[ $amt -lt $WARN_FLOOR_TH ]] || [[ $amt -ge $WARN_ROOF_TH ]];
+then
+  state="WARNING:"
+  status=$STATE_WARNING
+fi
+if [[ $amt -lt $CRIT_FLOOR_TH ]] ||[[ $amt -ge $CRIT_ROOF_TH ]];
+then
+  state="CRITICAL:"
+  #str="CRITICAL: ${name}" && status=$STATE_CRITICAL
+  status=$STATE_CRITICAL
+fi
+[[ $exitstatus -lt $status ]] && exitstatus=$status
+str="$state $description"
+#str="$str $description"
+#res="$str $res"
+res="Proc=$amt;$WARN_FLOOR_TH;$CRIT_FLOOR_TH;; PCPU=${avrg_cpu};;;; PMEM=${avrg_mem}"
+rm -f $output	
+echo -e "$str | $res"
+exit $exitstatus

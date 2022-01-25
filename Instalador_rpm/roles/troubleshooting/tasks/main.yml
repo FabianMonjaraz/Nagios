@@ -1,0 +1,75 @@
+---
+- name: Agregando reglas en /etc/sudoers
+  blockinfile:
+    path: /etc/sudoers
+    block: |
+      Defaults:nrpe !requiretty
+      nrpe ALL=NOPASSWD: /usr/lib64/nagios/plugins/
+
+- name: Agregando opcion de selinux para que permita a nrpe ejecutar comandos con sudo
+  shell: "setsebool nagios_run_sudo on"
+  ignore_errors: yes
+
+- name: Verificar si el plugin check_disk falla
+  shell: "/usr/local/nagios/libexec/check_nrpe -H {{ ansible_default_ipv4.address }} -c check_disk -a '-w 20% -c 10% -H -m'"
+  delegate_to: "{{ monitor }}"
+  register: ts_check_disk
+  #failed_when: "'Unable to read output' in ts_check_disk.stdout or 'Permission denied' in ts_check_disk.stdout"
+  changed_when: "'Unable to read output' in ts_check_disk.stdout or 'Permission denied' in ts_check_disk.stdout"
+  ignore_errors: yes
+
+- block:
+  
+  - name: Asegurando opcion sudo para check_disk en common.conf
+    lineinfile:
+      path: /etc/nrpe.d/common.cfg
+      regex: '^command\[check_disk\]'
+      line: 'command[check_disk]=sudo /usr/lib64/nagios/plugins/check_disk $ARG1$'
+    register: sudo_disk_common_cfg
+
+  - name: Reinicio si es necesario de nrpe
+    service:
+      name: nrpe
+      state: reloaded
+    when: sudo_disk_common_cfg.changed or owner_directory.changed
+  
+  - name: Cambiando el contexto del plugin check_disk a nagios_unconfined_plugin_exec_t
+    sefcontext:
+      # Se dirge el contexto a /usr/lib en lugar de a /usr/lib64 debido a un contexto que selinux tiene por default.
+      target: /usr/lib/nagios/plugins/check_disk
+      setype: nagios_unconfined_plugin_exec_t
+      state: present
+  
+  rescue: 
+    - name: Bloque de rescate (A falta de ciertos modulos en el equipo remoto)
+      shell: |
+        setsebool nagios_run_sudo on
+        semanage fcontext -a -t nagios_unconfined_plugin_exec_t /usr/lib/nagios/plugins/check_disk
+        restorecon -v /usr/lib64/nagios/plugins/check_disk
+        chcon -t nagios_unconfined_plugin_exec_t /usr/lib64/nagios/plugins/check_disk
+  always:
+    - name: Verificar si el fix funciono
+      shell: "/usr/local/nagios/libexec/check_nrpe -H {{ ansible_default_ipv4.address }} -c check_disk -a '-w 20% -c 10% -H -m'"
+      delegate_to: monitor_nagios1
+      register: check_fix
+      failed_when: "'Unable to read output' in check_fix.stdout"
+      ignore_errors: yes
+    - debug:
+        msg: "{{ check_fix.stdout_lines }}"
+
+  when: "'Unable to read output' in ts_check_disk.stdout or 'Permission denied' in ts_check_disk.stdout"
+
+- name: Cambiando owner a la carpeta /var/run/nrpe
+  file:
+    path: /var/run/nrpe/
+    state: directory
+    recurse: yes
+    owner: nrpe
+    group: nrpe
+  ignore_errors: yes
+  register: owner_directory
+- name: Reinicio si es necesario de nrpe
+  service:
+    name: nrpe
+    state: reloaded
+  when: owner_directory.changed

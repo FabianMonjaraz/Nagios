@@ -1,0 +1,48 @@
+#!/bin/bash
+
+while test $# -gt 0
+do
+
+  case $1 in
+    --help | -h )
+          echo "Usage: check_mem [warn] [crit]"
+          echo " [warn] and [crit] as int"
+          echo " Example: check_mem 20 10"
+          exit 3
+          ;;
+    --warn | -w ) warn=${2}
+         shift
+          ;;
+    --crit | -c ) crit=${2}
+         shift
+          ;;
+        * )  echo "unknown parameters"
+          echo "Usage: check_mem [warn] [crit]"
+          echo " [warn] and [crit] as int"
+          echo " Example: check_mem 20 10"
+          exit 3
+          ;;
+  esac
+  shift
+done
+
+read mem_total mem_used mem_free <<< $(free | grep -i mem | awk '{print $2 " " $3 " " $2-$3}')
+pctg_used=$(printf "%.0f\n" $(echo "scale=2;(${mem_used}/${mem_total}*100)/1" | bc -l))
+
+
+#if [[ "$warn" -lt "$crit" -o "$warn" -eq "$crit" ]]; then
+
+if [[ ${pctg_used} -ge ${crit} ]];
+  then
+    status="Critical"
+    exitstatus=2
+  elif [ ${pctg_used} -ge ${warn} ]; then
+    status="Warning"
+    exitstatus=1
+  else
+    status="OK"
+    exitstatus=0
+fi
+
+echo "${status}: $((${mem_used}/1024)) MB / $((${mem_total}/1024)) MB (${pctg_used}% used mem) |MUSE=${pctg_used};${warn};${crit};0;100"
+exit ${exitstatus}

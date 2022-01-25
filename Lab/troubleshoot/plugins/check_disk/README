@@ -1,0 +1,35 @@
+La razon por la que check_disk en la mayoria de los casos falla se resume en dos causas principales:
+1) No tiene permisos para leer algun FileSystem
+2) El contexto de selinux del plugin check_disk es incorrecto
+
+Para esto, este playbook realiza las siguientes tareas:
+
+1) Agrega la opcion sudo al plugin check_disk dentro del documento /etc/nrpe.d/common.cfg, donde se definen los plugins
+2) Se agregan los permisos de sudo en sudoers, los cuales, a grandes razgos, indican que el usuario nrpe puede ejecutar el comando check_disk con permisos de sudo sin el password y sin tener una terminal tty
+3) Se habilita el booleano de selinux nagios_run_sudo
+4) Se agrega el tipo de contexto 'nagios_unconfined_plugin_exec_t' a /usr/lib/nagios/plugins/check_disk (La ruta del plugin es /usr/lib64/nagios/plugins/check_disk, pero debido a que por configuraciones de selinux el contexto de /usr/lib se transfiere a /usr/lib64, es necesario aplicar el contexto a /usr/lib)
+5) Reiniciar el servicio NRPE si hubo cambio en el paso 1
+
+Es posible que el playbook falle, ya que los modulos seboolean y sefcontext necesitan de los paquetes libselinux-python y policycoreutils-python, y algunos servidores no lo tienen instalado. En estos casos, estos serian los pasos entrando directamente al servidor
+
+1) La entrada de check_disk en /etc/nrpe.d/common.cfg debe mantenerse de la siguiente manera
+command[check_disk]=sudo /usr/lib64/nagios/plugins/check_disk $ARG1$
+
+
+2) El archivo /etc/sudoers debe tener la siguiente entrada
+Defaults:nrpe !requiretty
+nrpe ALL=NOPASSWD: /usr/lib64/nagios/plugins/
+
+3) # setsebool nagios_run_sudo on
+
+4.1) # semanage fcontext -a -t nagios_unconfined_plugin_exec_t /usr/lib/nagios/plugins/check_disk
+4.2) # restorecon -v /usr/lib64/nagios/plugins/check_disk
+4.3) # chcon -t nagios_unconfined_plugin_exec_t /usr/lib64/nagios/plugins/check_disk
+
+Si policycoreutils-python no esta instalado entonces los cambios no seran persistentes, y al reiniciar el equipo o al restaurar los contextos de selinux (touch /autorelabel) este contexto se perdera
+
+Para ejecutar el paso 4 en un solo comando, este seria el siguiente
+ssh IP_SERVER "setsebool nagios_run_sudo on; semanage fcontext -a -t nagios_unconfined_plugin_exec_t /usr/lib/nagios/plugins/check_disk; restorecon -v /usr/lib64/nagios/plugins/check_disk; chcon -t nagios_unconfined_plugin_exec_t /usr/lib64/nagios/plugins/check_disk; ls -Z /usr/lib64/nagios/plugins/check_disk"
+
+5) # service nrpe restart
+Es recomendable usar service en lugar de systemctl para que la compatibilidad con RHEL6 se mantenga

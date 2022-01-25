@@ -1,0 +1,39 @@
+---
+- name: Enviando common.cfg
+  copy:
+    src: common.cfg
+    dest: /etc/nrpe.d/
+    mode: 0644
+
+- name: Enviando nrpe.cfg
+  copy:
+    src: nrpe.cfg
+    dest: /etc/nagios/
+    mode: 0644
+
+- name: Reiniciando servicio nrpe
+  service: 
+    name: nrpe
+    state: restarted
+
+- name: "Modificando archivo de servicio en systemd"
+  block: 
+  - name: "Cambiando bandera de servicio"
+    lineinfile:
+      path: /usr/lib/systemd/system/nrpe.service
+      regexp: "^ExecStart="
+      line: "ExecStart=/usr/sbin/nrpe -c /etc/nagios/nrpe.cfg -f"
+
+  - name: "Recargando daemon"
+    systemd: 
+      daemon_reload: yes
+  
+  - name: Reiniciando servicio nrpe
+    service: 
+      name: nrpe
+      state: restarted
+
+  when: 
+    - ansible_distribution_major_version != "6"
+    - ansible_distribution_major_version != "5"
+

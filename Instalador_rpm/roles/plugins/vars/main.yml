@@ -1,0 +1,6 @@
+---
+dependencias:
+  - perl-Getopt-Long
+  - perl-Exporter
+  - perl-constant
+  - bc

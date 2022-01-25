@@ -1,0 +1,119 @@
+#!/bin/sh
+
+usage() {
+  cat <<- EOM
+Script to watch for certain patterns in certain logs
+
+./$(basename $0) -f LOG_FILE -s 'PATTERN_SEARCH' [-h] [-t TIME_TO_LIVE_OF_MESSAGES] [-c CRIT_LIMIT] [-w WARN_LIMIT]
+
+  -f    LOG_FILE (string)
+        Define the logfile to watch
+
+  -s    'PATTERN_SEARCH' (string)
+        Define the pattern to search in the logfile
+      
+  -h    Show this message
+
+  -t    TIME_TO_LIVE_OF_MESSAGE (int)
+        Set the maximum time to live of the messages of the matches. 
+        Its defined in number of calls. 
+
+  -w    WARN_LIMIT (int)
+        Maximum times the expression may appear to trigger the warning message
+
+  -c    CRIT_LIMIT (int)
+        Maximum times the expression may appear to trigger the critical message
+
+EOM
+}
+update_lines() {
+  wc -l $LOG | cut -d" " -f1 > $FILE_LAST_LINE
+}
+rotate_messages() {
+  TMP_FILE="${DIR_FILES}/${FILENAME_EXPR}.tmp"
+  while read LINE; do
+    if [[ ! -z $(echo "$LINE" | grep "$EXPRESSION") ]]; then 
+      echo $LINE | awk -F";" '{print $1";"$2";"$3-1";"$4}' >> $TMP_FILE
+    fi
+  done < $FILE_FINDINGS
+  sed -i "/${EXPRESSION}/d" $FILE_FINDINGS
+  sed -i "/;0;/d" $TMP_FILE 2>/dev/null 
+
+  cat $TMP_FILE >> $FILE_FINDINGS 2>/dev/null
+  rm $TMP_FILE 2>/dev/null #DBG
+}
+
+STATUS_OK=0
+STATUS_WARNING=1
+STATUS_CRITICAL=2
+MESSAGE_TTL=1
+WARN_TH=1
+READING_LINES=0
+DIR_FILES=/tmp/nagios-tmp
+
+while getopts 'c:f:hs:t:w:' ARGUMENT
+do
+  case $ARGUMENT in
+    f) LOG=$(realpath $OPTARG) ;;
+    s) EXPRESSION=$OPTARG ;;
+    t) MESSAGE_TTL=$OPTARG ;;
+    w) WARN_TH=$OPTARG ;;
+    c) CRIT_TH=$OPTARG ;;
+    h)
+      usage
+      exit 0
+      ;;
+    *) echo "Option not recognized" && exit 1 ;;  
+  esac
+done
+STATUS=$STATUS_OK
+[[ -z $CRIT_TH ]] && CRIT_TH=$WARN_TH
+[[ $WARN_TH -gt $CRIT_TH ]] && echo "Error: Critical limit must be greater or equal to Warning limit" && exit $STATUS_WARNING
+    
+[[ ! -f $LOG ]] && echo "Provided log file \"$LOG\" not found" && exit $STATUS_WARNING
+[[ -z $EXPRESSION ]] && echo "Expression cannot be empty" && exit $STATUS_WARNING
+[[ $MESSAGE_TTL -lt 1 ]] && echo "The time-to-live must be an positive integer greater than 0" && exit $STATUS_WARNING
+FILENAME=$(echo "$LOG;$EXPRESSION" | md5sum | cut -d' ' -f1) #Joining log and expression to avoid conflicting expressions in the same file
+FILE_LAST_LINE="${DIR_FILES}/${FILENAME}.lastline"
+FILE_FINDINGS="${DIR_FILES}/${FILENAME}.findings"
+#FILE_FINDINGS="${DIR_FILES}/${FILENAME}.findings"
+
+[[ ! -d $DIR_FILES ]] && mkdir $DIR_FILES
+[[ ! -f $FILE_LAST_LINE ]] && echo "-1" > $FILE_LAST_LINE
+[[ ! -f $FILE_FINDINGS ]] && touch $FILE_FINDINGS
+
+LAST_READED_LINE=$(cat $FILE_LAST_LINE)
+LINES_IN_LOG=$(wc -l $LOG | cut -d" " -f1 )
+
+AMOUNT=0
+if [[ $LAST_READED_LINE -lt 0 ]]; then 
+  [[ $LAST_READED_LINE -gt $LINES_IN_LOG ]] && echo '' > $FILE_FINDINGS
+  update_lines
+  echo "OK: expression \"$EXPRESSION\" not found in $LOG|FINDINGS=$AMOUNT"
+  exit $STATUS_OK
+fi
+
+> $FILE_FINDINGS
+READING_LINES=$(expr $LINES_IN_LOG - $LAST_READED_LINE)
+if [[ $READING_LINES -gt 0 ]] && [[ ! -z $(tail -n $READING_LINES $LOG | grep -Ew "$EXPRESSION") ]]; then
+  AMOUNT=$(tail -n $READING_LINES $LOG | grep -Ew "$EXPRESSION" | wc -l)
+
+  #rotate_messages
+  #echo "$(date +"%Y-%m-%d %H:%M:%S"); \"$EXPRESSION\" found $AMOUNT time(s);$MESSAGE_TTL;|FINDINGS=$AMOUNT" >> $FILE_FINDINGS
+
+  echo "$(date +"%Y-%m-%d %H:%M:%S"); $LOG; \"$EXPRESSION\" found $AMOUNT time(s)|FINDINGS=$AMOUNT" > $FILE_FINDINGS
+  update_lines
+fi
+
+#if [[ ! -z $(grep "$EXPRESSION" $FILE_FINDINGS) ]]; then
+#  echo "WARN: $(grep "$EXPRESSION" $FILE_FINDINGS | tac)" #tac is used to reverse the output of the findings, to show first the last findings 
+MSG="OK"
+[[ $AMOUNT -ge $WARN_TH ]] && MSG="WARNING" && STATUS=$STATUS_WARNING
+[[ $AMOUNT -ge $CRIT_TH ]] && MSG="CRITICAL" && STATUS=$STATUS_CRITICAL
+if [[ -s $FILE_FINDINGS ]]; then
+  echo "$MSG: $(cat $FILE_FINDINGS)" 
+  exit $STATUS
+else
+  echo "OK: expression \"$EXPRESSION\" not found in $LOG|FINDINGS=$AMOUNT"
+  exit $STATUS_OK
+fi

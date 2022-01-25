@@ -1,0 +1,4 @@
+En ocasiones, el servicio no levantara. Esto puede ser por alguna de las siguientes causas:
+
+1.- El agente no tiene permisos de escritura en la carpeta /var/run/nrpe/,
+Sol.- # chown -R nrpe:nrpe /var/run/nrpe/

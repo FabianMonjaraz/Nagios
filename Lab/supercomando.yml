@@ -1,0 +1,21 @@
+---
+- hosts: all
+  gather_facts: no
+  vars:
+    - LOG: salida_tmp
+  tasks: 
+    - name: Recoleccion de facts necesarios
+      setup:
+        gather_subset:
+          - '!all'
+          - network
+
+    - name: Comando a ejecutar
+      shell: | 
+        uname #PLACEHOLDER
+      register: command
+
+    - name: Escribiendo resultados en log
+      shell: | 
+        echo "{{ ansible_default_ipv4.address }},{{ command.stdout }}" >> {{ LOG }}
+      delegate_to: localhost 
